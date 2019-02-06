@@ -6,7 +6,6 @@ import click
 import time
 import requests
 import yaml
-import itertools
 import logging
 
 
@@ -22,7 +21,6 @@ import logging
 @click.option('--command', '-c', type=str, help='command to run', multiple=True)
 @click.option('--interval', '-i', type=int, help='frequency to poll all configured files, in seconds')
 @click.option('--yamlfile', '-y', type=click.Path())
-
 def watch_config(filename, url, command, interval, debug, yamlfile):
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
@@ -34,18 +32,15 @@ def watch_config(filename, url, command, interval, debug, yamlfile):
                 service_config = yaml.load(yamlhandle)
         elif len(filename) == len(url) and len(filename) == len(command):
             service_config = []
-            for filename_item, url_item, command_item in itertools.izip(filename, url, command):
-                servce_config.append({'filename': filename_item, 'url': url_item, 'command': command_item})
+            for filename_item, url_item, command_item in zip(filename, url, command):
+                service_config.append({'filename': filename_item, 'url': url_item, 'command': command_item})
         else:
             raise Exception('ERROR parsing config')
 
     except Exception as err:
-        raise Exception('ERROR parsing config: %s\n' % (str(err)))
-        
-
+        raise Exception('ERROR parsing config: %s\n' % (str(err))) 
     seconds = 0
     file_timestamps = {}
-
     while True:
         for config_file in service_config:
             filename_item = config_file['filename']
@@ -83,8 +78,6 @@ def check_config_age(filename, url, file_timestamps):
     else:
         # on the first time seeing a file, we always update
         return True
-        
-
 
 def download_config(filename, url, file_timestamps):
         try:
@@ -94,8 +87,7 @@ def download_config(filename, url, file_timestamps):
             return False
         try:
             filehandle = open(filename, "w")
-            filehandle.write(str(url_get.content))
-            
+            filehandle.write(str(url_get.content)) 
             filehandle.close()
             file_timestamps[filename] = url_get.headers['Last-Modified']
         except IOError as err:
