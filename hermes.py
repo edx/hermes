@@ -7,7 +7,17 @@ import time
 import requests
 import yaml
 import logging
+import boto3
+import backoff
+from enum import Enum
 
+class Protocol(Enum):
+    https = 1
+    s3 = 2
+
+valid_protocols = []
+for protocol in Protocol:
+    valid_protocols.append(protocol)
 
 # ./hermes --interval 30
 # --filename index.html --url https://edx.org/index.html --command /edx/bin/supervisorctl restart lms 
@@ -19,7 +29,7 @@ import logging
 @click.option('--filename', '-f', type=str, help='filename to write to', multiple=True)
 @click.option('--url', '-u', type=str, help='url to read from', multiple=True)
 @click.option('--command', '-c', type=str, help='command to run', multiple=True)
-@click.option('--interval', '-i', type=int, help='frequency to poll all configured files, in seconds')
+@click.option('--interval', '-i', type=int, help='frequency to poll all configured files, in seconds', default=60)
 @click.option('--yamlfile', '-y', type=click.Path())
 def watch_config(filename, url, command, interval, debug, yamlfile):
     logging.basicConfig(
@@ -49,10 +59,22 @@ def watch_config(filename, url, command, interval, debug, yamlfile):
             assert filename_item != None
             assert url_item != None
             assert command_item != None
-            if check_config_age(filename_item, url_item, file_timestamps):
-                download_config(filename_item, url_item, file_timestamps)
-                logging.info('file \'%s\' changed, running: \'%s\'' % (filename_item, command_item))
-                logging.info(subprocess.check_output(command_item, shell=True).decode("utf-8"))
+
+            protocol = get_valid_protocol_from_url(url_item)
+
+            if protocol == Protocol.https and config_age_changed_https(filename_item, url_item, file_timestamps):
+                download_config_https(filename_item, url_item, file_timestamps)
+                run_command_for_filename(filename_item, command_item)
+            elif protocol == Protocol.s3 and config_age_changed_s3(filename_item, url_item, file_timestamps):
+                download_config_s3(filename_item, url_item, file_timestamps)
+                run_command_for_filename(filename_item, command_item)
+            elif protocol in valid_protocols:
+                # Dont do anything - this is a valid protocol, that does not need to be updated, this is
+                # correct behaviour
+                logging.debug("No update needed.")
+            else:
+                # I dont know how to compare timestamps and/or download files of this protocol
+                logging.error("ERROR ")
 
         if interval == 0:
             break
@@ -60,41 +82,111 @@ def watch_config(filename, url, command, interval, debug, yamlfile):
         seconds = seconds + interval
         logging.debug('DEBUG: woke up after %d seconds\n' % seconds)
 
+def run_command_for_filename(filename_item, command_item):
+    logging.info('file \'%s\' changed, running: \'%s\'' % (filename_item, command_item))
+    logging.info(subprocess.check_output(command_item, shell=True).decode("utf-8"))
 
-def check_config_age(filename, url, file_timestamps):
-    if file_timestamps.get(filename):
-        try:
-            url_head = requests.head(url, timeout=2)
-        except requests.exceptions.RequestException as err:
-            logging.error('ERROR checking %s: %s\n' % (str(url), str(err)))
-            # If we can't head the file, log an error and continue
-            return False
-        if url_head.headers['Last-Modified'] != file_timestamps[filename]:
-            logging.debug('DEBUG: changed %s Server modified: %s Local modified: %s\n' % (url, url_head.headers['Last-Modified'], file_timestamps[filename]))
-            return True
-        else:
-            logging.debug('DEBUG: Unchanged %s\n' % url)
-            return False
+def get_valid_protocol_from_url(url):
+    if url.startswith("https://"):
+        return Protocol.https
+    elif url.startswith("s3://"):
+        return Protocol.s3
     else:
-        # on the first time seeing a file, we always update
+        raise Exception('ERROR Unsupported Protocol')
+
+
+def config_age_changed_https(filename, url, file_timestamps):
+
+    if file_timestamps.get(filename) == None:
         return True
 
-def download_config(filename, url, file_timestamps):
-        try:
-            url_get = requests.get(url, timeout=2)
-        except requests.exceptions.RequestException as err:
-            logging.error('ERROR downloading %s: %s\n' % (str(url), str(err)))
-            return False
-        try:
-            filehandle = open(filename, "w")
-            filehandle.write(str(url_get.content)) 
-            filehandle.close()
-            file_timestamps[filename] = url_get.headers['Last-Modified']
-        except IOError as err:
-            logging.error('ERROR writing %s: %s\n' % (str(filename), str(err)))
-            return False
-        logging.info('Downloaded %s\n' % url)
+    try:
+        url_head = requests.head(url, timeout=2)
+    except requests.exceptions.RequestException as err:
+        logging.error('ERROR checking %s: %s\n' % (str(url), str(err)))
+        # If we can't head the file, log an error and continue
+        return False
+    if url_head.headers['Last-Modified'] != file_timestamps.get(filename):
+        logging.debug('DEBUG: changed %s Server modified: %s Local modified: %s\n' % (url, url_head.headers['Last-Modified'], file_timestamps[filename]))
         return True
+    else:
+        logging.debug('DEBUG: Unchanged %s\n' % url)
+        return False
+
+def download_config_https(filename, url, file_timestamps):
+    try:
+        url_get = requests.get(url, timeout=2)
+    except requests.exceptions.RequestException as err:
+        logging.error('ERROR downloading %s: %s\n' % (str(url), str(err)))
+        return False
+    try:
+        filehandle = open(filename, "w")
+        filehandle.write(str(url_get.content)) 
+        filehandle.close()
+        file_timestamps[filename] = url_get.headers['Last-Modified']
+    except IOError as err:
+        logging.error('ERROR writing %s: %s\n' % (str(filename), str(err)))
+        return False
+    logging.info('Downloaded %s\n' % url)
+    return True
+
+def extract_bucket_key_from_s3_url(url):
+    # strip protocol
+    bucket_and_key = url.split("//")[1]
+
+    # Split out bucket and key
+    bucket_and_key = bucket_and_key.split("/", 1)
+
+    bucket = bucket_and_key[0]
+    key = bucket_and_key[1]
+    return {'key': key, 'bucket': bucket}
+
+def config_age_changed_s3(filename, url, file_timestamps):
+    if file_timestamps.get(filename) == None:
+        return True
+
+    client = boto3.client('s3')
+
+    # URl is expected to be something like: s3://my-bucket-name/my-path/to/my/object
+
+    bucket_and_key = extract_bucket_key_from_s3_url(url)
+    bucket = bucket_and_key['bucket']
+    key = bucket_and_key['key']
+
+    try:
+        head=client.head_object(Bucket=bucket, Key=key)
+    except Exception as err:
+        logging.error('ERROR checking %s: %s\n' % (str(url), str(err)))
+        # If we can't head the file, log an error and continue
+        return False
+
+    if head['LastModified'] != file_timestamps.get(filename):
+        logging.debug('DEBUG: changed %s Server modified: %s Local modified: %s\n' % (url, head['LastModified'], file_timestamps[filename]))
+        return True
+    else:
+        logging.debug('DEBUG: Unchanged %s\n' % url)
+        return False
+
+def download_config_s3(filename, url, file_timestamps):
+    client = boto3.client('s3')
+
+    bucket_and_key = extract_bucket_key_from_s3_url(url)
+    bucket = bucket_and_key['bucket']
+    key = bucket_and_key['key']
+    last_modified = client.head_object(Bucket=bucket, Key=key)['LastModified']
+
+    try:
+        with open(filename, 'wb') as data:
+            client.download_fileobj(bucket, key, data)
+        file_timestamps[filename] = last_modified
+    except IOError as err:
+        logging.error('ERROR writing %s: %s\n' % (str(filename), str(err)))
+        return False
+    except requests.exceptions.RequestException as err:
+        logging.error('ERROR downloading %s: %s\n' % (str(url), str(err)))
+        return False
+    logging.info('Downloaded %s\n' % url)
+    return True
 
 if __name__ == '__main__':
     watch_config()
