@@ -52,7 +52,6 @@ def watch_config(filename, url, command, interval, debug, yamlfile, secret_key_f
             service_config = []
             for filename_item, url_item, command_item, secret_key_file_item in zip_longest(filename, url, command, secret_key_file):
                 block = {'filename': filename_item, 'url': url_item, 'command': command_item, 'secret_key_file': secret_key_file_item}
-                print(block)
                 service_config.append(block)
         else:
             raise Exception('ERROR parsing config')
@@ -63,7 +62,6 @@ def watch_config(filename, url, command, interval, debug, yamlfile, secret_key_f
     file_timestamps = {}
     while True:
         for config_file in service_config:
-            print(config_file)
             filename_item = config_file['filename']
             url_item = config_file['url']
             command_item = config_file['command']
