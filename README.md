@@ -4,7 +4,7 @@
 
 ### About
 
-Hermes is the messenger/bureaucrat of the edx stack.  It fetches yaml config documents and optionally decrypts them on a server's filesystem on a regular basis
+Hermes is the messenger/bureaucrat of the edx stack.  It fetches documents and files them on a server's filesystem on a regular basis
 
 ### Install
 
