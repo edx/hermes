@@ -1,0 +1,4 @@
+- url: 's3://bucket/config.yaml'
+  filename: 'config.yaml'
+  secret_key_file: '/path_to_some_private_rsa_key.private' # optional
+  command:  'whoami'
