@@ -1,0 +1,7 @@
+version: '3'
+services:
+  hermes:
+    build: .
+    volumes:
+      - .:/edx/app/hermes
+    command: hermes.py
