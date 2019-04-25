@@ -13,5 +13,5 @@ upgrade: ## update the pip requirements files to use the latest releases satisfy
 	docker-compose build && docker-compose run hermes make upgrade-requirements
 
 upgrade-requirements: export CUSTOM_COMPILE_COMMAND=make upgrade
-upgrade-requirements: ## update the pip requirements files to use the latest releases satisfying our constraints, outside of docker
+upgrade-requirements: ## update the pip requirements files to use the latest releases satisfying our constraints
 	pip-compile --upgrade -o requirements.txt requirements.in
