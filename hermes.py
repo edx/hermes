@@ -42,7 +42,7 @@ def watch_config(filename, url, command, interval, debug, yamlfile, secret_key_f
     try:
         if yamlfile:
             with open(yamlfile) as yamlhandle:
-                service_config = yaml.load(yamlhandle)
+                service_config = yaml.safe_load(yamlhandle)
                 # If no keys were passed, dont fail, just dont decrypt
                 # This is so hermes can function with no keys being passed.
                 for block in service_config:
