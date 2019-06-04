@@ -9,6 +9,7 @@ import yaml
 import logging
 import boto3
 import backoff
+import random
 from itertools import zip_longest
 import asym_crypto_yaml
 from enum import Enum
@@ -31,10 +32,11 @@ for protocol in Protocol:
 @click.option('--filename', '-f', type=str, help='filename to write to', multiple=True)
 @click.option('--url', '-u', type=str, help='url to read from', multiple=True)
 @click.option('--command', '-c', type=str, help='command to run', multiple=True)
-@click.option('--interval', '-i', type=int, help='frequency to poll all configured files, in seconds', default=60)
+@click.option('--interval', '-i', type=int, help='frequency to poll all configured files, in seconds', default=40)
+@click.option('--jitter', '-j', type=int, help='each sleep will randomly add between 0 and j seconds', default=40)
 @click.option('--yamlfile', '-y', type=click.Path())
 @click.option('--secret-key-file', '-k', type=str, help='secret key for decrypting downloaded yaml file', multiple=True)
-def watch_config(filename, url, command, interval, debug, yamlfile, secret_key_file):
+def watch_config(filename, url, command, interval, jitter, debug, yamlfile, secret_key_file):
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
         level=logging.DEBUG if debug else logging.INFO,
@@ -88,8 +90,10 @@ def watch_config(filename, url, command, interval, debug, yamlfile, secret_key_f
 
         if interval == 0:
             break
-        time.sleep(interval)
-        seconds = seconds + interval
+        sleep_time = interval + random.randint(0, jitter)
+        logging.debug('DEBUG: sleeping %d seconds\n' % sleep_time)
+        time.sleep(sleep_time)
+        seconds = seconds + sleep_time
         logging.debug('DEBUG: woke up after %d seconds\n' % seconds)
 
 def run_command_for_filename(filename_item, command_item):
