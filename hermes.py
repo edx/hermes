@@ -35,8 +35,8 @@ for protocol in Protocol:
 @click.option('--interval', '-i', type=int, help='frequency to poll all configured files, in seconds', default=40)
 @click.option('--jitter', '-j', type=int, help='each sleep will randomly add between 0 and j seconds', default=40)
 @click.option('--yamlfile', '-y', type=click.Path())
-@click.option('--secret-key-file', '-k', type=str, help='secret key for decrypting downloaded yaml file', multiple=True)
-def watch_config(filename, url, command, interval, jitter, debug, yamlfile, secret_key_file):
+@click.option('--secret-key-files', '-k', type=str, help='secret keys for decrypting downloaded yaml file', multiple=True)
+def watch_config(filename, url, command, interval, jitter, debug, yamlfile, secret_key_files):
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
         level=logging.DEBUG if debug else logging.INFO,
@@ -48,12 +48,12 @@ def watch_config(filename, url, command, interval, jitter, debug, yamlfile, secr
                 # If no keys were passed, dont fail, just dont decrypt
                 # This is so hermes can function with no keys being passed.
                 for block in service_config:
-                    if 'secret_key_file' not in block:
-                        block['secret_key_file'] = None
+                    if 'secret_key_files' not in block:
+                        block['secret_key_files'] = None
         elif len(filename) == len(url) and len(filename) == len(command):
             service_config = []
-            for filename_item, url_item, command_item, secret_key_file_item in zip_longest(filename, url, command, secret_key_file):
-                block = {'filename': filename_item, 'url': url_item, 'command': command_item, 'secret_key_file': secret_key_file_item}
+            for filename_item, url_item, command_item, secret_key_files_item in zip_longest(filename, url, command, secret_key_files):
+                block = {'filename': filename_item, 'url': url_item, 'command': command_item, 'secret_key_files': secret_key_files_item}
                 service_config.append(block)
         else:
             raise Exception('ERROR parsing config')
@@ -67,7 +67,7 @@ def watch_config(filename, url, command, interval, jitter, debug, yamlfile, secr
             filename_item = config_file['filename']
             url_item = config_file['url']
             command_item = config_file['command']
-            secret_key_file_item = config_file['secret_key_file']
+            secret_key_files_item = config_file['secret_key_files']
             assert filename_item != None
             assert url_item != None
             assert command_item != None
@@ -75,10 +75,10 @@ def watch_config(filename, url, command, interval, jitter, debug, yamlfile, secr
             protocol = get_valid_protocol_from_url(url_item)
 
             if protocol == Protocol.https and config_age_changed_https(filename_item, url_item, file_timestamps):
-                download_config_https(filename_item, url_item, file_timestamps, secret_key_file_item)
+                download_config_https(filename_item, url_item, file_timestamps, secret_key_files_item)
                 run_command_for_filename(filename_item, command_item)
             elif protocol == Protocol.s3 and config_age_changed_s3(filename_item, url_item, file_timestamps):
-                download_config_s3(filename_item, url_item, file_timestamps, secret_key_file_item)
+                download_config_s3(filename_item, url_item, file_timestamps, secret_key_files_item)
                 run_command_for_filename(filename_item, command_item)
             elif protocol in valid_protocols:
                 # Dont do anything - this is a valid protocol, that does not need to be updated, this is
@@ -127,7 +127,7 @@ def config_age_changed_https(filename, url, file_timestamps):
         logging.debug('DEBUG: Unchanged %s\n' % url)
         return False
 
-def download_config_https(filename, url, file_timestamps, secret_key_file):
+def download_config_https(filename, url, file_timestamps, secret_key_files):
     try:
         url_get = requests.get(url, timeout=2)
     except requests.exceptions.RequestException as err:
@@ -139,7 +139,7 @@ def download_config_https(filename, url, file_timestamps, secret_key_file):
         filehandle = open(encrypted_filename, "w")
         filehandle.write(str(url_get.content)) 
         filehandle.close()
-        decrypt_and_write_to_file(encrypted_filename, filename, secret_key_file)
+        decrypt_and_write_to_file(encrypted_filename, filename, secret_key_files)
         file_timestamps[filename] = last_modified
     except IOError as err:
         logging.error('ERROR writing %s: %s\n' % (str(filename), str(err)))
@@ -173,7 +173,7 @@ def config_age_changed_s3(filename, url, file_timestamps):
         logging.debug('DEBUG: Unchanged %s\n' % url)
         return False
 
-def download_config_s3(filename, url, file_timestamps, secret_key_file):
+def download_config_s3(filename, url, file_timestamps, secret_key_files):
     client = boto3.client('s3')
 
     bucket_and_key = extract_bucket_key_from_s3_url(url)
@@ -185,7 +185,7 @@ def download_config_s3(filename, url, file_timestamps, secret_key_file):
         encrypted_filename = filename + ".enc"
         with open(encrypted_filename, 'wb') as data:
             client.download_fileobj(bucket, key, data)
-        decrypt_and_write_to_file(encrypted_filename, filename, secret_key_file)
+        decrypt_and_write_to_file(encrypted_filename, filename, secret_key_files)
         file_timestamps[filename] = last_modified
 
     except IOError as err:
@@ -209,10 +209,23 @@ def extract_bucket_key_from_s3_url(url):
     key = bucket_and_key[1]
     return {'key': key, 'bucket': bucket}
 
-def decrypt_and_write_to_file(encrypted_filename, decrypted_output_filename, secret_key_file):
+def decrypt_and_write_to_file(encrypted_filename, decrypted_output_filename, secret_key_files):
     decrypted_dict = None
     with open(encrypted_filename, "r") as f:
-        decrypted_dict = asym_crypto_yaml.load(f, secret_key_file)
+        if secret_key_files:
+            secret_keys = secret_key_files.split(',')
+            for secret_key in secret_keys:
+                try:
+                    decrypted_dict = asym_crypto_yaml.load(f, secret_key)
+                    break
+                except Exception as err:
+                   logging.warning('Secret key is invalid %s: %s\n' % (str(secret_key), str(err)))
+                   f.seek(0)
+            else:
+                logging.error('ERROR decrypting File %s:' % (str(encrypted_filename)))
+                decrypted_dict = asym_crypto_yaml.load(f, None)
+        else:
+            decrypted_dict = asym_crypto_yaml.load(f, secret_key_files)
     asym_crypto_yaml.write_dict_to_yaml(decrypted_dict, decrypted_output_filename)
 
 if __name__ == '__main__':

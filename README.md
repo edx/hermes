@@ -50,24 +50,24 @@ Hermes can use https://github.com/edx/asym-crypto-yaml to decrypt yaml before wr
 
 ```
 ./hermes --interval 30 \
- --filename /edx/etc/edxapp/lms.yaml --url s3://some-bucket/lms.yaml --secret-key-file /path-to-some-rsa-private-key --command 'sudo chown edxapp:www-data /edx/etc/edxapp/lms.yaml; sudo chmod 660 /edx/etc/edxapp/lms.yaml; sudo /edx/bin/supervisorctl restart lms' \
- --filename /edx/etc/edxapp/cms.yaml --url s3://some-bucket/cms.yaml --secret-key-file /path-to-some-rsa-private-key --command 'sudo chown edxapp:www-data /edx/etc/edxapp/cms.yaml; sudo chmod 660 /edx/etc/edxapp/cms.yaml; sudo /edx/bin/supervisorctl restart cms' \
+ --filename /edx/etc/edxapp/lms.yaml --url s3://some-bucket/lms.yaml --secret-key-files /comma-seperated-path-to-some-rsa-private-keys --command 'sudo chown edxapp:www-data /edx/etc/edxapp/lms.yaml; sudo chmod 660 /edx/etc/edxapp/lms.yaml; sudo /edx/bin/supervisorctl restart lms' \
+ --filename /edx/etc/edxapp/cms.yaml --url s3://some-bucket/cms.yaml --secret-key-files /comma-seperated-path-to-some-rsa-private-keys --command 'sudo chown edxapp:www-data /edx/etc/edxapp/cms.yaml; sudo chmod 660 /edx/etc/edxapp/cms.yaml; sudo /edx/bin/supervisorctl restart cms' \
 ```
 
 ## Or configure via Yaml:
 /edx/etc/hermes/hermes.yaml:
 ```
 - filename: '/edx/etc/edxapp/lms.yaml'
-  secret_key_file: /path-to-some-rsa-private-key  # optional
+  secret_key_files: /path-to-some-rsa-private-key  # optional
   url: 'https://s3.amazonaws.com/edx-config/prod-edx/lms.yaml'
   command:  'sudo chown edxapp:www-data /edx/etc/edxapp/lms.yaml; sudo chmod 660 /edx/etc/edxapp/lms.yaml; sudo /edx/bin/supervisorctl restart lms' 
 - filename: '/edx/etc/edxapp/cms.yaml'
-  secret_key_file: /path-to-some-rsa-private-key  # optional
+  secret_key_files: /path-to-some-rsa-private-key  # optional
   url: 'https://s3.amazonaws.com/edx-config/prod-edx/cms.yaml'
   command:  'sudo chown edxapp:www-data /edx/etc/edxapp/cms.yaml; sudo chmod 660 /edx/etc/edxapp/cms.yaml; sudo /edx/bin/supervisorctl restart cms' 
 ```
 
-The secret_key_file is only needed if your yaml is encrypted
+The secret_key_files is only needed if your yaml is encrypted
 If you dont pass a key, but include encrypted values they will be deserialized as their encrypted values instead of decrypting them
 
 Then run:
