@@ -19,7 +19,7 @@ Hermes is designed to run under supervisor.  It takes an unlimited number of con
 
 ### Permissions
 
-Hermes writes files and executes commands, therefore he needs permission to write and execute those files and commands.  For maximum security, assign hermes his own user, execute comamnds using sudo and strictly limit the commands he's allowed to run in sudoers.
+Hermes writes files and executes commands, therefore he needs permission to write and execute those files and commands.  For maximum security, assign hermes his own user, execute commands using sudo and strictly limit the commands he's allowed to run in sudoers.
 
 ## Example sudoers file
 
