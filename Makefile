@@ -1,5 +1,5 @@
-.DEFAULT_GOAL := help
-.PHONY := requirements
+.DEFAULT_GOAL: help
+.PHONY: requirements
 
 # Generates a help message. Borrowed from https://github.com/pydanny/cookiecutter-djangopackage
 help: ## Display this help message
