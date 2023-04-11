@@ -98,7 +98,10 @@ def watch_config(filename, url, command, interval, jitter, debug, yamlfile, secr
 
 def run_command_for_filename(filename_item, command_item):
     logging.info('file \'%s\' changed, running: \'%s\'' % (filename_item, command_item))
-    logging.info(subprocess.check_output(command_item, shell=True).decode("utf-8"))
+    try:
+        logging.info(subprocess.check_output(command_item, shell=True).decode("utf-8"))
+    except subprocess.CalledProcessError as err:
+        logging.error(f"Command '{err.cmd}' returned non-zero exit status {err.returncode}: {err.output.decode('utf-8')}")
 
 def get_valid_protocol_from_url(url):
     if url.startswith("https://"):
